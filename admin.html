@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#651d31">
+  <meta name="description" content="لوحة إدارة LEN لمستحضرات التجميل والعناية بالبشرة">
+  <title>إدارة LEN</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Naskh+Arabic:wght@500;600;700&family=Cormorant+Garamond:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="admin.css">
+  <script src="admin.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="#" aria-label="LEN الرئيسية">
+        <span class="brand-word">LEN</span>
+        <span class="brand-caption">MAKEUP AND SKIN CARE</span>
+      </a>
+      <div class="store-pill"><span class="status-dot"></span><span>متجر LEN</span><span class="pill-en">ADMIN</span></div>
+      <nav class="main-nav" aria-label="التنقل الرئيسي">
+        <p class="nav-caption">مساحة العمل</p>
+        <button class="nav-item active" data-view="dashboard"><span class="nav-icon">◫</span><span>الرئيسية</span></button>
+        <button class="nav-item" data-view="orders"><span class="nav-icon">▤</span><span>الطلبات</span><span class="nav-count" id="pendingNavCount">0</span></button>
+        <button class="nav-item" data-view="products"><span class="nav-icon">◇</span><span>المنتجات</span></button>
+        <button class="nav-item" data-view="categories"><span class="nav-icon">▧</span><span>الفئات</span></button>
+        <button class="nav-item" data-view="inventory"><span class="nav-icon">▦</span><span>المخزون</span></button>
+        <button class="nav-item" data-view="customers"><span class="nav-icon">♙</span><span>العملاء</span></button>
+        <p class="nav-caption nav-caption-spaced">المتجر</p>
+        <button class="nav-item" data-view="payments"><span class="nav-icon">◈</span><span>المدفوعات</span></button>
+        <button class="nav-item" data-view="settings"><span class="nav-icon">⚙</span><span>الإعدادات</span></button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="secure-note"><span class="secure-lock">◈</span><span>لوحة خاصة<br><small>الدخول محمي خارج التطبيق</small></span></div>
+        <a class="store-link" href="../" target="_blank" rel="noreferrer"><span>عرض المتجر</span><span>↗</span></a>
+      </div>
+    </aside>
+
+    <div class="sidebar-scrim" id="sidebarScrim"></div>
+    <main class="main-area">
+      <header class="topbar">
+        <div class="topbar-title">
+          <button class="menu-toggle" id="menuToggle" aria-label="فتح القائمة">☰</button>
+          <div><p class="topbar-kicker">مساحة إدارة LEN</p><h1 id="pageTitle">نظرة عامة</h1></div>
+        </div>
+        <div class="topbar-actions">
+          <span class="sync-status" id="syncStatus"><i></i> <span>جارٍ الاتصال</span></span>
+          <button class="icon-action" id="refreshButton" title="تحديث البيانات" aria-label="تحديث البيانات">↻</button>
+          <div class="user-avatar" title="مسؤول LEN">L</div>
+        </div>
+      </header>
+
+      <section class="page-content" id="pageContent" aria-live="polite">
+        <div class="loading-state"><span class="spinner"></span><span>جارٍ تحميل بيانات المتجر…</span></div>
+      </section>
+      <footer class="app-footer"><span>LEN · إدارة المتجر</span><span>كل الأسعار بالجنيه المصري <bdi>EGP</bdi></span></footer>
+    </main>
+  </div>
+
+  <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="true"></div>
+  <div class="modal-backdrop" id="modalBackdrop" hidden>
+    <section class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <header class="modal-header"><div><p class="modal-eyebrow" id="modalEyebrow">LEN · إدارة</p><h2 id="modalTitle"></h2></div><button class="modal-close" id="modalClose" aria-label="إغلاق">×</button></header>
+      <div class="modal-body" id="modalBody"></div>
+      <footer class="modal-footer" id="modalFooter"></footer>
+    </section>
+  </div>
+</body>
+</html>
