@@ -13,10 +13,10 @@
   const state = {
     view: "dashboard", busy: false, error: "", categories: [], products: [], orders: [], customers: [],
     settings: {}, summary: {}, pages: {},
-    filters: { products: { q: "", category: "", active: "" }, orders: { q: "", status: "" }, inventory: { q: "", stock: "" }, customers: { q: "" } }
+    filters: { products: { q: "", category: "", active: "" }, discounts: { q: "" }, orders: { q: "", status: "" }, inventory: { q: "", stock: "" }, customers: { q: "" } }
   };
   const PAGE_TITLES = {
-    dashboard: "نظرة عامة", orders: "الطلبات", products: "المنتجات", categories: "الفئات",
+    dashboard: "نظرة عامة", orders: "الطلبات", products: "المنتجات", discounts: "الخصومات", categories: "الفئات",
     inventory: "المخزون", customers: "العملاء", payments: "المدفوعات", settings: "الإعدادات"
   };
   const ORDER_STATUSES = [
@@ -39,6 +39,14 @@
   const productName = product => product?.name_ar || product?.name_en || "منتج";
   const customerName = order => order?.customer?.full_name || "عميل";
   const categoryName = product => product?.category?.name_ar || product?.category?.name_en || "—";
+  const discountPercent = product => {
+    const value = Number(product?.discount_percentage ?? 0);
+    return Number.isFinite(value) && value >= 0 && value <= 100 ? value : 0;
+  };
+  const discountedPrice = product => Number((Number(product?.price || 0) * (1 - discountPercent(product) / 100)).toFixed(2));
+  const productPriceDisplay = product => discountPercent(product)
+    ? `<span class="price-stack"><s>${money(product.price)}</s><strong class="sale-price">${money(discountedPrice(product))}</strong></span>`
+    : money(product.price);
   const statusClass = status => {
     if (["confirmed", "preparing", "shipped", "delivered", "deposit_received"].includes(status)) return "status-green";
     if (["new", "waiting_for_deposit", "deposit_submitted"].includes(status)) return "status-amber";
@@ -148,6 +156,7 @@
   function updateNavigation() {
     $$(".nav-item").forEach(button => button.classList.toggle("active", button.dataset.view === state.view));
     $("#pageTitle").textContent = PAGE_TITLES[state.view] || "إدارة LEN";
+    $("#discountNavCount").textContent = integer(state.products.filter(product => discountPercent(product) > 0).length);
     $("#sidebar").classList.remove("open");
     $("#sidebarScrim").classList.remove("open");
   }
@@ -155,6 +164,7 @@
     updateNavigation();
     const views = {
       dashboard: renderDashboard, orders: renderOrders, products: renderProducts,
+      discounts: renderDiscounts,
       categories: renderCategories, inventory: renderInventory, customers: renderCustomers,
       payments: renderPayments, settings: renderSettings
     };
@@ -239,12 +249,40 @@
       <section class="panel"><div class="table-wrap mobile-stack"><table class="data-table"><thead><tr><th>المنتج</th><th>الفئة</th><th>السعر</th><th>المخزون</th><th>الحالة</th><th>إجراء</th></tr></thead><tbody>
       ${visible.length ? visible.map(product => { const [stockLabel, stockClass] = stockStatus(product); return `<tr>
         <td class="product-mobile-cell"><div class="product-cell">${productPhoto(product)}<span><span class="table-main">${esc(productName(product))}</span><span class="table-sub latin">${esc(product.name_en || "")}</span></span></div></td>
-        <td data-label="الفئة">${esc(categoryName(product))}</td><td data-label="السعر" class="price">${money(product.price)}</td>
+        <td data-label="الفئة">${esc(categoryName(product))}</td><td data-label="السعر" class="price">${productPriceDisplay(product)}</td>
         <td data-label="المخزون"><span class="latin">${integer(product.stock_quantity)}</span> <span class="status ${stockClass}">${stockLabel}</span></td>
         <td data-label="حالة المنتج"><span class="status ${product.is_active ? "status-green" : "status-muted"}">${product.is_active ? "نشط" : "غير نشط"}</span></td>
-        <td data-label="الإجراء" class="mobile-actions"><div class="table-actions"><button class="text-button" data-action="edit-product" data-id="${attr(product.id)}">تعديل</button><button class="text-button" data-action="toggle-product" data-id="${attr(product.id)}">${product.is_active ? "إيقاف" : "تفعيل"}</button><button class="text-button danger" data-action="delete-product" data-id="${attr(product.id)}">حذف</button></div></td>
+        <td data-label="الإجراء" class="mobile-actions"><div class="table-actions"><button class="text-button" data-action="edit-product" data-id="${attr(product.id)}">تعديل</button><button class="text-button" data-action="set-product-discount" data-id="${attr(product.id)}">${discountPercent(product) ? "تعديل الخصم" : "إضافة خصم"}</button><button class="text-button" data-action="toggle-product" data-id="${attr(product.id)}">${product.is_active ? "إيقاف" : "تفعيل"}</button><button class="text-button danger" data-action="delete-product" data-id="${attr(product.id)}">حذف</button></div></td>
       </tr>`; }).join("") : `<tr><td colspan="6" class="table-empty">${state.products.length ? "لا توجد نتائج مطابقة." : "لا توجد منتجات. أضيفي أول منتج للبدء."}</td></tr>`}
       </tbody></table></div>${pagination("products", filtered.length, per)}</section>`;
+  }
+  function renderDiscounts() {
+    const query = (state.filters.discounts.q || "").trim().toLocaleLowerCase();
+    const discounted = state.products.filter(product => discountPercent(product) > 0);
+    const filtered = discounted.filter(product => `${product.name_ar || ""} ${product.name_en || ""}`.toLocaleLowerCase().includes(query));
+    const per = 15;
+    const current = Math.min(state.pages.discounts || 1, Math.max(1, Math.ceil(filtered.length / per)));
+    state.pages.discounts = current;
+    const visible = filtered.slice((current - 1) * per, current * per);
+    const highestDiscount = discounted.reduce((highest, product) => Math.max(highest, discountPercent(product)), 0);
+    const biggestSaving = discounted.reduce((highest, product) => Math.max(highest, Number(product.price || 0) - discountedPrice(product)), 0);
+    return `${pageHeading("الخصومات", "تابعي المنتجات المخفّضة وعدّلي نسبة الخصم لكل منتج من هنا أو من صفحة المنتجات.")}
+      <div class="metric-grid discount-metrics">
+        ${metric("منتجات عليها خصم", integer(discounted.length), "٪", "الخصومات المفعّلة حاليًا")}
+        ${metric("أعلى نسبة خصم", `${integer(highestDiscount)}%`, "↘", "بين المنتجات المخفّضة")}
+        ${metric("أكبر توفير للقطعة", money(biggestSaving), "◇", "قيمة الفرق على قطعة واحدة")}
+      </div>
+      ${toolbar("ابحثي باسم المنتج المخفّض…")}
+      <section class="panel"><div class="table-wrap mobile-stack"><table class="data-table"><thead><tr><th>المنتج</th><th>الفئة</th><th>السعر الأصلي</th><th>الخصم</th><th>السعر بعد الخصم</th><th>إجراء</th></tr></thead><tbody>
+      ${visible.length ? visible.map(product => `<tr>
+        <td class="product-mobile-cell"><div class="product-cell">${productPhoto(product)}<span><span class="table-main">${esc(productName(product))}</span><span class="table-sub latin">${esc(product.name_en || "")}</span></span></div></td>
+        <td data-label="الفئة">${esc(categoryName(product))}</td>
+        <td data-label="السعر الأصلي" class="price"><s class="old-price">${money(product.price)}</s></td>
+        <td data-label="الخصم"><span class="discount-badge">${integer(discountPercent(product))}%</span></td>
+        <td data-label="السعر بعد الخصم" class="price"><strong class="sale-price">${money(discountedPrice(product))}</strong></td>
+        <td data-label="إجراء" class="mobile-actions"><div class="table-actions"><button class="text-button" data-action="set-product-discount" data-id="${attr(product.id)}">تعديل الخصم</button><button class="text-button danger" data-action="remove-product-discount" data-id="${attr(product.id)}">إزالة الخصم</button></div></td>
+      </tr>`).join("") : `<tr><td colspan="6" class="table-empty">${query ? "لا توجد نتائج مطابقة." : discounted.length ? "لا توجد نتائج مطابقة." : state.products.length ? "لا توجد خصومات مفعّلة. أضيفي خصمًا من صفحة المنتجات." : "أضيفي المنتجات أولًا ثم حددي خصمًا لكل منتج."}</td></tr>`}
+      </tbody></table></div>${pagination("discounts", filtered.length, per)}</section>`;
   }
   function renderOrders() {
     const q = (state.filters.orders.q || "").trim().toLocaleLowerCase();
@@ -369,10 +407,10 @@
     $("#modalBackdrop").hidden = true;
     document.body.style.overflow = "";
   }
-  function field(name, label, value = "", { type = "text", required = false, placeholder = "", min, step, full = false, options = "", maxlength = "" } = {}) {
+  function field(name, label, value = "", { type = "text", required = false, placeholder = "", min, max, step, full = false, options = "", maxlength = "", hint = "" } = {}) {
     const id = `field-${name}`;
-    const common = `id="${id}" name="${name}" ${required ? "required" : ""} ${placeholder ? `placeholder="${attr(placeholder)}"` : ""} ${min !== undefined ? `min="${min}"` : ""} ${step !== undefined ? `step="${step}"` : ""} ${maxlength ? `maxlength="${maxlength}"` : ""}`;
-    return `<div class="field ${full ? "full" : ""}"><label for="${id}">${label}</label>${options ? `<select ${common}>${options}</select>` : type === "textarea" ? `<textarea ${common}>${esc(value)}</textarea>` : `<input ${common} type="${type}" value="${attr(value)}">`}</div>`;
+    const common = `id="${id}" name="${name}" ${required ? "required" : ""} ${placeholder ? `placeholder="${attr(placeholder)}"` : ""} ${min !== undefined ? `min="${min}"` : ""} ${max !== undefined ? `max="${max}"` : ""} ${step !== undefined ? `step="${step}"` : ""} ${maxlength ? `maxlength="${maxlength}"` : ""}`;
+    return `<div class="field ${full ? "full" : ""}"><label for="${id}">${label}</label>${options ? `<select ${common}>${options}</select>` : type === "textarea" ? `<textarea ${common}>${esc(value)}</textarea>` : `<input ${common} type="${type}" value="${attr(value)}">`}${hint ? `<small>${esc(hint)}</small>` : ""}</div>`;
   }
   function openProductForm(product = null) {
     const editing = Boolean(product);
@@ -396,6 +434,7 @@
         ${field("description_ar", "الوصف بالعربية", product?.description_ar || "", { type: "textarea" })}
         ${field("category_id", "الفئة", product?.category_id || "", { required: true, options: `<option value="">اختاري فئة</option>${options}` })}
         ${field("price", "السعر", product?.price ?? "", { type: "number", min: "0", step: "0.01", required: true })}
+        ${field("discount_percentage", "نسبة الخصم (%)", product?.discount_percentage ?? 0, { type: "number", min: "0", max: "100", step: "0.01", hint: "من 0 إلى 100٪ — أدخلي 0 لإلغاء الخصم." })}
         ${field("stock_quantity", "الكمية في المخزون", product?.stock_quantity ?? 0, { type: "number", min: "0", step: "1", required: true })}
         ${field("is_active", "حالة المنتج", "", { options: `<option value="true" ${product?.is_active !== false ? "selected" : ""}>نشط</option><option value="false" ${product?.is_active === false ? "selected" : ""}>غير نشط</option>` })}
         <div class="field full"><label for="productImages">صور المنتج</label><div class="image-picker"><input id="productImages" name="images" type="file" accept="image/jpeg,image/png,image/webp,image/avif" multiple><span class="table-sub">حتى 10 ميغابايت للصورة.</span></div>
@@ -514,10 +553,11 @@
       description_ar: String(data.get("description_ar") || "").trim(),
       category_id: String(data.get("category_id") || ""),
       price: Number(data.get("price")),
+      discount_percentage: Number(data.get("discount_percentage") || 0),
       stock_quantity: Number(data.get("stock_quantity")),
       is_active: String(data.get("is_active")) === "true"
     };
-    if (!product.name_en || !product.name_ar || !product.category_id || !Number.isFinite(product.price) || product.price < 0 || !Number.isInteger(product.stock_quantity) || product.stock_quantity < 0) {
+    if (!product.name_en || !product.name_ar || !product.category_id || !Number.isFinite(product.price) || product.price < 0 || !Number.isFinite(product.discount_percentage) || product.discount_percentage < 0 || product.discount_percentage > 100 || !Number.isInteger(product.stock_quantity) || product.stock_quantity < 0) {
       throw new Error("أكملي الحقول المطلوبة وتحققي من السعر والكمية.");
     }
     const files = [...($("#productImages")?.files || [])];
@@ -593,6 +633,12 @@
     if (action === "refresh") return loadData();
     if (action === "add-product") return openProductForm();
     if (action === "edit-product") return openProductForm(state.products.find(item => item.id === id));
+    if (action === "set-product-discount") return openProductForm(state.products.find(item => item.id === id));
+    if (action === "remove-product-discount") {
+      await perform(`/products/${encodeURIComponent(id)}`, "PATCH", { discount_percentage: 0 });
+      toast("تمت إزالة الخصم.");
+      return;
+    }
     if (action === "add-category") return openCategoryForm();
     if (action === "edit-category") return openCategoryForm(state.categories.find(item => item.id === id));
     if (action === "edit-stock") return openStockForm(state.products.find(item => item.id === id));
