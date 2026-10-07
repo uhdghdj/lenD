@@ -1,3 +1,4 @@
+
 :root {
   --wine: #651d31;
   --wine-dark: #4c1424;
@@ -99,6 +100,10 @@ bdi, .num, .price, .metric-value, time, input[type="number"], input[type="tel"],
 .data-table tbody tr:hover { background: #fdfaf6; }
 .table-main { display: block; color: var(--wine-dark); font-size: 10px; }
 .table-sub { display: block; margin-top: 4px; color: #978a84; font-size: 9px; }
+.price-stack { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 3px; white-space: nowrap; }
+.old-price { color: #9b908a; font-size: 9px; font-weight: 400; }
+.sale-price { color: var(--wine); font-weight: 700; }
+.discount-badge { display: inline-flex; align-items: center; padding: 5px 8px; border-radius: 3px; background: var(--red-bg); color: var(--red); font-family: var(--sans); font-size: 9px; font-weight: 700; direction: ltr; }
 .status { display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; border-radius: 2px; white-space: nowrap; font-size: 8px; }
 .status::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 .status-green { background: var(--green-bg); color: var(--green); }
