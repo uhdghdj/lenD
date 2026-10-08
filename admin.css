@@ -272,3 +272,7 @@ bdi, .num, .price, .metric-value, time, input[type="number"], input[type="tel"],
   .toast-region { right: 12px; left: 12px; bottom: 12px; }
   .toast { width: 100%; max-width: none; }
 }
+
+.category-photo { overflow: hidden; flex: 0 0 auto; }
+.category-photo img, .category-image-preview img { width: 100%; height: 100%; object-fit: cover; }
+.category-image-preview { width: 90px; height: 80px; }
