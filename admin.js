@@ -311,7 +311,7 @@
   function renderCategories() {
     const cards = state.categories.map(category => {
       const count = state.products.filter(product => product.category_id === category.id).length;
-      return `<article class="category-card"><span class="category-symbol">◇</span><div class="category-card-main"><h3>${esc(category.name_ar || category.name_en)}</h3><p>${esc(category.name_en || category.slug)} · ${integer(count)} منتج</p></div>
+      return `<article class="category-card">${category.image_url ? `<span class="category-symbol category-photo"><img src="${attr(category.image_url)}" alt="" loading="lazy"></span>` : '<span class="category-symbol">◇</span>'}<div class="category-card-main"><h3>${esc(category.name_ar || category.name_en)}</h3><p>${esc(category.name_en || category.slug)} · ${integer(count)} منتج</p></div>
         <div class="category-card-actions"><button class="text-button" data-action="edit-category" data-id="${attr(category.id)}">تعديل</button><button class="text-button danger" data-action="delete-category" data-id="${attr(category.id)}">حذف</button></div></article>`;
     }).join("");
     return `${pageHeading("الفئات", "تنظيم المنتجات بين العناية بالبشرة والمكياج.", '<button class="button" data-action="add-category">＋ إضافة فئة</button>')}
@@ -461,8 +461,19 @@
       body: `<form id="categoryForm" class="form-grid" data-form="category"><input type="hidden" name="id" value="${attr(category?.id || "")}">
         ${field("name_en", "الاسم بالإنجليزية", category?.name_en || "", { required: true, placeholder: "Skin Care" })}
         ${field("name_ar", "الاسم بالعربية", category?.name_ar || "", { required: true, placeholder: "العناية بالبشرة" })}
-        ${field("slug", "المعرّف المختصر", category?.slug || "", { required: true, placeholder: "skin-care" })}</form>`,
+        ${field("slug", "المعرّف المختصر", category?.slug || "", { required: true, placeholder: "skin-care" })}
+        <div class="field full"><label for="categoryImage">صورة الفئة (تظهر في واجهة المتجر)</label><div class="image-picker"><input id="categoryImage" name="category_image" type="file" accept="image/jpeg,image/png,image/webp,image/avif"><span class="table-sub">حتى 10 ميغابايت.</span></div>
+          <div class="image-preview-row" id="categoryImagePreview">${category?.image_url ? `<div class="image-preview category-image-preview"><img src="${attr(category.image_url)}" alt=""><small>الحالية</small></div>` : ""}</div>
+          ${category?.image_url ? '<label class="table-sub"><input name="remove_image" type="checkbox"> حذف صورة الفئة</label>' : ""}</div></form>`,
       footer: `<button class="button button-secondary" type="button" data-modal-cancel>إلغاء</button><button class="button" type="submit" form="categoryForm">${editing ? "حفظ الفئة" : "إضافة الفئة"}</button>`
+    });
+    $("#categoryImage").addEventListener("change", event => {
+      const file = event.target.files[0];
+      const holder = $("#categoryImagePreview");
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => { holder.innerHTML = `<div class="image-preview category-image-preview"><img src="${attr(reader.result)}" alt=""><small>جديدة</small></div>`; };
+      reader.readAsDataURL(file);
     });
   }
   function openStockForm(product) {
@@ -543,6 +554,16 @@
       if (isMain) await api(`/products/${encodeURIComponent(productId)}`, { method: "PATCH", body: JSON.stringify({ image_url: imageUrl }) });
     }
   }
+  async function uploadCategoryImage(slug, file) {
+    const objectPath = `categories/${slug}-${Date.now()}-${file.name.replace(/[^\w.\-]+/g, "_")}`;
+    const upload = await fetch(`${SUPABASE_URL}/storage/v1/object/${STORAGE_BUCKET}/${objectPath}`, {
+      method: "POST",
+      headers: { ...SB_HEADERS, "Content-Type": file.type, "x-upsert": "true" },
+      body: file
+    });
+    if (!upload.ok) throw new Error("تعذر رفع صورة الفئة إلى التخزين.");
+    return `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${objectPath}`;
+  }
   async function handleProductSubmit(form) {
     const data = new FormData(form);
     const id = String(data.get("id") || "");
@@ -591,6 +612,13 @@
         const id = String(new FormData(form).get("id") || "");
         data.slug = String(data.slug || "").trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "");
         if (!data.name_en.trim() || !data.name_ar.trim() || !data.slug) throw new Error("أكملي اسمَي الفئة والمعرّف المختصر.");
+        const removeImage = data.remove_image === "on";
+        delete data.category_image; delete data.remove_image;
+        const imageFile = $("#categoryImage")?.files?.[0];
+        if (imageFile) {
+          if (!imageFile.type.startsWith("image/") || imageFile.size > 10 * 1024 * 1024) throw new Error("اختاري صورة صالحة بحجم لا يتجاوز 10 ميغابايت.");
+          data.image_url = await uploadCategoryImage(data.slug, imageFile);
+        } else if (removeImage) data.image_url = null;
         await perform(id ? `/categories/${encodeURIComponent(id)}` : "/categories", id ? "PATCH" : "POST", data);
         closeModal(); toast(id ? "تم تحديث الفئة." : "تمت إضافة الفئة.");
       } else if (form.dataset.form === "stock") {
