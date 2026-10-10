@@ -1,4 +1,3 @@
-
 :root {
   --wine: #651d31;
   --wine-dark: #4c1424;
@@ -276,3 +275,14 @@ bdi, .num, .price, .metric-value, time, input[type="number"], input[type="tel"],
 .category-photo { overflow: hidden; flex: 0 0 auto; }
 .category-photo img, .category-image-preview img { width: 100%; height: 100%; object-fit: cover; }
 .category-image-preview { width: 90px; height: 80px; }
+
+/* ===== Free shipping toggle ===== */
+.ship-toggle{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--line,#e5e0d8);border-radius:12px;cursor:pointer}
+.ship-toggle input{position:absolute;opacity:0;pointer-events:none}
+.ship-toggle-track{flex:0 0 44px;height:24px;border-radius:999px;background:#cfc8bd;position:relative;transition:background .2s}
+.ship-toggle-track::after{content:"";position:absolute;top:3px;inset-inline-start:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .2s}
+.ship-toggle input:checked + .ship-toggle-track{background:#2f8f5b}
+.ship-toggle input:checked + .ship-toggle-track::after{transform:translateX(-20px)}
+[dir=ltr] .ship-toggle input:checked + .ship-toggle-track::after{transform:translateX(20px)}
+.ship-toggle input:focus-visible + .ship-toggle-track{outline:2px solid #2f8f5b;outline-offset:2px}
+.ship-toggle small{display:block;font-weight:400;opacity:.75;margin-top:2px}
