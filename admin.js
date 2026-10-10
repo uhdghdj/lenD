@@ -251,7 +251,7 @@
         <td class="product-mobile-cell"><div class="product-cell">${productPhoto(product)}<span><span class="table-main">${esc(productName(product))}</span><span class="table-sub latin">${esc(product.name_en || "")}</span></span></div></td>
         <td data-label="الفئة">${esc(categoryName(product))}</td><td data-label="السعر" class="price">${productPriceDisplay(product)}</td>
         <td data-label="المخزون"><span class="latin">${integer(product.stock_quantity)}</span> <span class="status ${stockClass}">${stockLabel}</span></td>
-        <td data-label="حالة المنتج"><span class="status ${product.is_active ? "status-green" : "status-muted"}">${product.is_active ? "نشط" : "غير نشط"}</span></td>
+        <td data-label="حالة المنتج"><span class="status ${product.is_active ? "status-green" : "status-muted"}">${product.is_active ? "نشط" : "غير نشط"}</span>${product.free_shipping ? ' <span class="status status-green">🚚 شحن مجاني</span>' : ""}</td>
         <td data-label="الإجراء" class="mobile-actions"><div class="table-actions"><button class="text-button" data-action="edit-product" data-id="${attr(product.id)}">تعديل</button><button class="text-button" data-action="set-product-discount" data-id="${attr(product.id)}">${discountPercent(product) ? "تعديل الخصم" : "إضافة خصم"}</button><button class="text-button" data-action="toggle-product" data-id="${attr(product.id)}">${product.is_active ? "إيقاف" : "تفعيل"}</button><button class="text-button danger" data-action="delete-product" data-id="${attr(product.id)}">حذف</button></div></td>
       </tr>`; }).join("") : `<tr><td colspan="6" class="table-empty">${state.products.length ? "لا توجد نتائج مطابقة." : "لا توجد منتجات. أضيفي أول منتج للبدء."}</td></tr>`}
       </tbody></table></div>${pagination("products", filtered.length, per)}</section>`;
@@ -437,6 +437,7 @@
         ${field("discount_percentage", "نسبة الخصم (%)", product?.discount_percentage ?? 0, { type: "number", min: "0", max: "100", step: "0.01", hint: "من 0 إلى 100٪ — أدخلي 0 لإلغاء الخصم." })}
         ${field("stock_quantity", "الكمية في المخزون", product?.stock_quantity ?? 0, { type: "number", min: "0", step: "1", required: true })}
         ${field("is_active", "حالة المنتج", "", { options: `<option value="true" ${product?.is_active !== false ? "selected" : ""}>نشط</option><option value="false" ${product?.is_active === false ? "selected" : ""}>غير نشط</option>` })}
+        <div class="field full"><label class="ship-toggle" for="field-free_shipping"><input id="field-free_shipping" name="free_shipping" type="checkbox" value="true" ${product?.free_shipping === true ? "checked" : ""}><span class="ship-toggle-track" aria-hidden="true"></span><span><strong>🚚 الشحن المجاني لهذا المنتج</strong><small>عند التفعيل يصبح الطلب الذي يحتوي على هذا المنتج مجاني الشحن بالكامل.</small></span></label></div>
         <div class="field full"><label for="productImages">صور المنتج</label><div class="image-picker"><input id="productImages" name="images" type="file" accept="image/jpeg,image/png,image/webp,image/avif" multiple><span class="table-sub">حتى 10 ميغابايت للصورة.</span></div>
           <label class="table-sub"><input id="makeMainImage" name="make_main" type="checkbox" ${!product?.image_url ? "checked" : ""}> اجعلي الصورة الجديدة الأولى الصورة الرئيسية</label>
           <div class="image-preview-row" id="currentImages">${imageTiles}${unlistedMain}</div>
@@ -510,6 +511,8 @@
       </tbody></table>
       <div class="detail-grid" style="margin-top:13px">
         <div class="detail-item"><span class="detail-label">الإجمالي الفرعي</span><span class="detail-value price">${money(order.subtotal)}</span></div>
+        <div class="detail-item"><span class="detail-label">مصاريف الشحن</span><span class="detail-value price">${order.free_shipping_applied ? `${money(0)} <span class="status status-green">شحن مجاني</span>` : money(order.shipping_fee)}</span></div>
+        <div class="detail-item"><span class="detail-label">الإجمالي النهائي</span><span class="detail-value price">${money(order.total_amount ?? (Number(order.subtotal || 0) + Number(order.shipping_fee || 0)))}</span></div>
         <div class="detail-item"><span class="detail-label">العربون · ${integer(order.deposit_percentage)}%</span><span class="detail-value price">${money(order.deposit_amount)}</span></div>
         <div class="detail-item"><span class="detail-label">المتبقي</span><span class="detail-value price">${money(order.remaining_amount)}</span></div>
         <div class="detail-item"><span class="detail-label">رقم إضافي للمخزون</span><span class="detail-value">${order.stock_deducted ? "تم خصم الكمية" : "لم يتم الخصم"}</span></div>
@@ -576,7 +579,8 @@
       price: Number(data.get("price")),
       discount_percentage: Number(data.get("discount_percentage") || 0),
       stock_quantity: Number(data.get("stock_quantity")),
-      is_active: String(data.get("is_active")) === "true"
+      is_active: String(data.get("is_active")) === "true",
+      free_shipping: data.get("free_shipping") === "true"
     };
     if (!product.name_en || !product.name_ar || !product.category_id || !Number.isFinite(product.price) || product.price < 0 || !Number.isFinite(product.discount_percentage) || product.discount_percentage < 0 || product.discount_percentage > 100 || !Number.isInteger(product.stock_quantity) || product.stock_quantity < 0) {
       throw new Error("أكملي الحقول المطلوبة وتحققي من السعر والكمية.");
