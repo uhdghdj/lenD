@@ -111,12 +111,13 @@
     const confirmed = ["confirmed", "preparing", "shipped", "delivered"];
     const pending = ["new", "waiting_for_deposit"];
     const threshold = Number(state.settings.low_stock_threshold ?? 5);
+    const unpaidDepositStatuses = ["pending", "deposit_submitted"];
     return {
       total_orders: state.orders.length,
       pending_orders: state.orders.filter(o => pending.includes(o.order_status)).length,
       confirmed_orders: state.orders.filter(o => confirmed.includes(o.order_status)).length,
       total_sales: state.orders.filter(o => confirmed.includes(o.order_status)).reduce((sum, o) => sum + Number(o.subtotal || 0), 0),
-      pending_deposits: state.orders.filter(o => o.payment_status === "deposit_submitted").reduce((sum, o) => sum + Number(o.deposit_amount || 0), 0),
+      pending_deposits: state.orders.filter(o => o.order_status !== "cancelled" && unpaidDepositStatuses.includes(o.payment_status)).reduce((sum, o) => sum + Number(o.deposit_amount || 0), 0),
       total_products: state.products.length,
       low_stock_products: state.products.filter(p => Number(p.stock_quantity) > 0 && Number(p.stock_quantity) <= threshold).length,
       sold_out_products: state.products.filter(p => !Number(p.stock_quantity)).length
@@ -331,7 +332,7 @@
     const per = 15, current = Math.min(state.pages.inventory || 1, Math.max(1, Math.ceil(filtered.length / per)));
     state.pages.inventory = current;
     const visible = filtered.slice((current - 1) * per, current * per);
-    return `${pageHeading("المخزون", "تابعي الكميات وحدّثي الرصيد؛ تنفّذ قواعد قاعدة البيانات خصم الطلبات واستعادتها.")}
+    return `${pageHeading("المخزون", "تابعي الكميات وحدّثي الرصيد؛ يُخصم المخزون عند تأكيد الطلب ويُستعاد عند إلغائه عبر قاعدة البيانات.")}
       ${toolbar("ابحثي باسم المنتج…", `<select class="filter-select" data-stock-filter><option value="" ${!state.filters.inventory.stock ? "selected" : ""}>كل الحالات</option><option value="available" ${state.filters.inventory.stock === "available" ? "selected" : ""}>متوفر</option><option value="low" ${state.filters.inventory.stock === "low" ? "selected" : ""}>مخزون منخفض</option><option value="out" ${state.filters.inventory.stock === "out" ? "selected" : ""}>نفد المخزون</option></select>`)}
       <section class="panel"><div class="table-wrap mobile-stack"><table class="data-table"><thead><tr><th>المنتج</th><th>الفئة</th><th>الرصيد</th><th>الحالة</th><th>تحديث المخزون</th></tr></thead><tbody>
       ${visible.length ? visible.map(product => { const [label, cls] = stockStatus(product); return `<tr>
@@ -845,40 +846,6 @@
       }
     }
   }
-  async function ensureConfirmedOrderStock(orderId) {
-    const order = state.orders.find(item => String(item.id) === String(orderId));
-    if (!order || !["confirmed", "preparing", "shipped", "delivered"].includes(order.order_status) || order.stock_deducted) return;
-    const items = orderItems(order);
-    if (!items.length) throw new Error("تم تأكيد الطلب، لكن لا توجد بنود منتجات لخصمها من المخزون.");
-    const quantities = new Map();
-    for (const item of items) {
-      const productId = item.product_id || item.product?.id;
-      const quantity = Number(item.quantity || 0);
-      if (!productId || !Number.isInteger(quantity) || quantity < 1) {
-        throw new Error("تم تأكيد الطلب، لكن بعض البنود غير مرتبطة بمنتج أو كميتها غير صالحة؛ لم يتم خصم المخزون.");
-      }
-      quantities.set(String(productId), (quantities.get(String(productId)) || 0) + quantity);
-    }
-    const applied = [];
-    try {
-      for (const [productId, quantity] of quantities) {
-        const product = state.products.find(item => String(item.id) === productId);
-        if (!product) throw new Error("تعذر العثور على منتج من منتجات الطلب في المخزون.");
-        const current = Number(product.stock_quantity || 0);
-        if (current < quantity) throw new Error(`المخزون غير كافٍ للمنتج ${productName(product)}؛ المتاح ${integer(current)} والمطلوب ${integer(quantity)}.`);
-        await api(`/inventory/${encodeURIComponent(productId)}`, { method: "PATCH", body: JSON.stringify({ stock_quantity: current - quantity }) });
-        applied.push({ productId, previous: current });
-      }
-      await api(`/orders/${encodeURIComponent(orderId)}`, { method: "PATCH", body: JSON.stringify({ stock_deducted: true }) });
-      await loadData({ quiet: true });
-    } catch (error) {
-      for (const row of applied.reverse()) {
-        try { await api(`/inventory/${encodeURIComponent(row.productId)}`, { method: "PATCH", body: JSON.stringify({ stock_quantity: row.previous }) }); } catch (_) { /* report original failure */ }
-      }
-      await loadData({ quiet: true });
-      throw error;
-    }
-  }
   async function handleChange(event) {
     const target = event.target;
     if (target.matches("[data-order-status]")) {
@@ -888,23 +855,10 @@
       if (!order || order.order_status === next) return;
       const previous = order.order_status;
       target.disabled = true;
-      let statusUpdated = false;
       try {
         await perform(`/orders/${encodeURIComponent(id)}/status`, "PATCH", { order_status: next });
-        statusUpdated = true;
-        if (["confirmed", "preparing", "shipped", "delivered"].includes(next)) await ensureConfirmedOrderStock(id);
-        toast("تم تأكيد الطلب وتحديث كمية المخزون.");
+        toast("تم تحديث حالة الطلب والمخزون.");
       } catch (error) {
-        if (statusUpdated) {
-          try {
-            await api(`/orders/${encodeURIComponent(id)}/status`, { method: "PATCH", body: JSON.stringify({ order_status: previous }) });
-            await loadData({ quiet: true });
-          } catch (_) {
-            await loadData({ quiet: true });
-            toast("تعذر خصم المخزون، ولم نتمكن من إعادة حالة الطلب تلقائيًا. راجعي الطلب والمخزون.", "error");
-            return;
-          }
-        }
         target.value = previous;
         toast(error.message || "تعذر تغيير حالة الطلب.", "error");
       } finally { target.disabled = false; }
