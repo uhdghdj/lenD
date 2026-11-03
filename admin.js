@@ -1,4 +1,5 @@
 
+
 /* LEN admin UI. All privileged requests go through the protected same-origin worker API. */
 (() => {
   "use strict";
@@ -83,6 +84,7 @@
     else if ((m = path.match(/^\/inventory\/([^/]+)$/))) url = byId("products", m[1]);
     else if ((m = path.match(/^\/settings\/([^/]+)$/))) url = byId("store_settings", m[1]);
     else if ((m = path.match(/^\/orders\/([^/]+)\/(payment|status)$/))) url = byId("orders", m[1]);
+    else if ((m = path.match(/^\/orders\/([^/]+)$/))) url = byId("orders", m[1]);
     else if ((m = path.match(/^\/images\/([^/]+)$/))) url = byId("product_images", m[1]);
     else if ((m = path.match(/^\/images\/([^/]+)\/main$/))) {
       const image = state.products.flatMap(p => p.images || []).find(img => String(img.id) === m[1]);
@@ -305,7 +307,7 @@
         <td data-label="الإجمالي" class="price">${money(order.subtotal)}</td><td data-label="العربون" class="price">${money(order.deposit_amount)}</td>
         <td data-label="الدفع">${paymentStatusBadge(order.payment_status)}</td>
         <td data-label="الحالة"><select class="order-status-select" data-order-status="${attr(order.id)}" aria-label="تغيير حالة الطلب">${ORDER_STATUSES.map(([value,label]) => `<option value="${value}" ${value === order.order_status ? "selected" : ""}>${label}</option>`).join("")}</select></td>
-        <td data-label="التاريخ" class="latin">${date(order.created_at)}</td><td data-label="التفاصيل" class="mobile-actions"><button class="text-button" data-action="order-details" data-id="${attr(order.id)}">التفاصيل</button></td>
+        <td data-label="التاريخ" class="latin">${date(order.created_at)}</td><td data-label="الإجراءات" class="mobile-actions"><div class="table-actions"><button class="text-button" data-action="order-details" data-id="${attr(order.id)}">التفاصيل</button><button class="text-button" data-action="edit-order" data-id="${attr(order.id)}">تعديل</button><button class="text-button danger" data-action="delete-order" data-id="${attr(order.id)}">حذف</button></div></td>
       </tr>`).join("") : `<tr><td colspan="8" class="table-empty">${state.orders.length ? "لا توجد نتائج مطابقة." : "لا توجد طلبات حتى الآن."}</td></tr>`}
       </tbody></table></div>${pagination("orders", filtered.length, per)}</section>`;
   }
@@ -492,6 +494,101 @@
   function orderItems(order) {
     return Array.isArray(order.items) ? order.items : [];
   }
+  function openOrderEdit(order) {
+    const items = orderItems(order);
+    const shippingFee = Number(order.shipping_fee || 0);
+    const shippingDiscount = Number(order.shipping_discount || 0);
+    const itemFields = items.length ? items.map((item, index) => {
+      const name = item.product_name_ar || item.product_name_en || item.product?.name_ar || item.product?.name_en || "منتج";
+      return `<div class="order-edit-line"><div class="order-edit-product"><strong>${esc(name)}</strong><small>${item.product_id || item.product?.id ? "تعديل الكمية سيحدّث المخزون تلقائيًا." : "لا يوجد ربط مباشر بمنتج المخزون لهذا البند."}</small></div><input aria-label="كمية ${esc(name)}" type="number" name="item_quantity_${index}" min="1" step="1" value="${attr(item.quantity ?? 1)}" required><input aria-label="سعر الوحدة ${esc(name)}" type="number" name="item_price_${index}" min="0" step="0.01" value="${attr(item.unit_price ?? 0)}" required></div>`;
+    }).join("") : '<p class="table-sub">لا توجد بنود منتجات محفوظة في الطلب؛ يمكن تعديل الشحن والملاحظات.</p>';
+    showModal({
+      title: `تعديل الطلب والفاتورة ${order.order_number || ""}`,
+      body: `<form id="orderEditForm" class="form-grid" data-form="order-edit"><input type="hidden" name="id" value="${attr(order.id)}"><input type="hidden" name="item_count" value="${items.length}">
+        <h3 class="form-section-title">بنود الفاتورة · اسم المنتج / الكمية / سعر الوحدة</h3><div class="field full"><div class="order-edit-lines">${itemFields}</div></div>
+        ${field("shipping_fee", "مصاريف الشحن قبل الخصم (جنيه)", shippingFee, { type: "number", min: "0", step: "0.01", required: true })}
+        ${field("shipping_discount", "خصم الشحن (جنيه)", shippingDiscount, { type: "number", min: "0", step: "0.01", required: true })}
+        <div class="field"><label class="ship-toggle" for="field-free_shipping_applied"><input id="field-free_shipping_applied" name="free_shipping_applied" type="checkbox" value="true" ${order.free_shipping_applied ? "checked" : ""}><span class="ship-toggle-track" aria-hidden="true"></span><span><strong>شحن مجاني</strong><small>يصبح إجمالي الشحن صفرًا.</small></span></label></div>
+        ${field("deposit_percentage", "نسبة العربون (%)", order.deposit_percentage ?? state.settings.deposit_percentage ?? 30, { type: "number", min: "0", max: "100", step: "0.01", required: true })}
+        ${field("notes", "ملاحظات الطلب", order.notes || "", { type: "textarea", full: true })}
+        <div class="detail-item full order-edit-hint">سيُعاد حساب إجمالي الفاتورة والعربون والمتبقي عند الحفظ. إذا كان الطلب مؤكدًا، سيُحدّث فرق الكميات المخزون.</div>
+      </form>`,
+      footer: '<button class="button button-secondary" type="button" data-modal-cancel>إلغاء</button><button class="button" type="submit" form="orderEditForm">حفظ الطلب والفاتورة</button>'
+    });
+  }
+  async function saveOrderEdit(form) {
+    const data = new FormData(form);
+    const id = String(data.get("id") || "");
+    const order = state.orders.find(item => String(item.id) === id);
+    if (!order) throw new Error("تعذر العثور على الطلب؛ حدّث البيانات وحاول مرة أخرى.");
+    const oldItems = orderItems(order);
+    const count = Number(data.get("item_count") || 0);
+    const nextItems = oldItems.map((item, index) => {
+      const quantity = Number(data.get(`item_quantity_${index}`));
+      const unitPrice = Number(data.get(`item_price_${index}`));
+      if (!Number.isInteger(quantity) || quantity < 1 || !Number.isFinite(unitPrice) || unitPrice < 0) throw new Error("تحققي من كميات وأسعار المنتجات في الفاتورة.");
+      return { ...item, quantity, unit_price: unitPrice, total_price: Number((quantity * unitPrice).toFixed(2)) };
+    });
+    if (nextItems.length !== count) throw new Error("تغيرت بنود الطلب؛ أعيدي فتح نموذج التعديل.");
+    const fee = Number(data.get("shipping_fee"));
+    const discount = Number(data.get("shipping_discount"));
+    const depositPct = Number(data.get("deposit_percentage"));
+    if (![fee, discount, depositPct].every(Number.isFinite) || fee < 0 || discount < 0 || depositPct < 0 || depositPct > 100) throw new Error("تحققي من قيمة الشحن والخصم ونسبة العربون.");
+    const subtotal = Number(nextItems.reduce((sum, item) => sum + Number(item.total_price || 0), 0).toFixed(2));
+    const freeShipping = data.get("free_shipping_applied") === "true";
+    const finalShipping = freeShipping ? 0 : Math.max(0, fee - discount);
+    const total = Number((subtotal + finalShipping).toFixed(2));
+    const deposit = Number((total * depositPct / 100).toFixed(2));
+    const remaining = Number(Math.max(0, total - deposit).toFixed(2));
+    const stockChanges = new Map();
+    if (order.stock_deducted) {
+      const addQuantities = (list, sign) => list.forEach(item => {
+        const productId = item.product_id || item.product?.id;
+        if (!productId) {
+          const key = `${item.product_name_ar || item.product_name_en || ""}`;
+          const matching = nextItems.find(next => (next.product_name_ar || next.product_name_en || "") === key);
+          const changed = matching && Number(matching.quantity) !== Number(item.quantity);
+          if (changed) throw new Error("لا يمكن تعديل كمية بند غير مربوط بمعرّف المنتج بعد خصم المخزون.");
+          return;
+        }
+        stockChanges.set(String(productId), (stockChanges.get(String(productId)) || 0) + sign * Number(item.quantity || 0));
+      });
+      addQuantities(oldItems, -1);
+      addQuantities(nextItems, 1);
+    }
+    const applied = [];
+    try {
+      for (const [productId, change] of stockChanges) {
+        if (!change) continue;
+        const product = state.products.find(item => String(item.id) === productId);
+        if (!product) throw new Error("تعذر العثور على أحد منتجات الطلب في المخزون.");
+        const nextStock = Number(product.stock_quantity || 0) - change;
+        if (nextStock < 0) throw new Error(`المخزون غير كافٍ للمنتج ${productName(product)}.`);
+        await api(`/inventory/${encodeURIComponent(productId)}`, { method: "PATCH", body: JSON.stringify({ stock_quantity: nextStock }) });
+        applied.push({ productId, previous: Number(product.stock_quantity || 0) });
+      }
+      await api(`/orders/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ items: nextItems, subtotal, shipping_fee: fee, shipping_discount: discount, free_shipping_applied: freeShipping, total_amount: total, deposit_percentage: depositPct, deposit_amount: deposit, remaining_amount: remaining, notes: String(data.get("notes") || "").trim() }) });
+    } catch (error) {
+      for (const change of applied.reverse()) {
+        try { await api(`/inventory/${encodeURIComponent(change.productId)}`, { method: "PATCH", body: JSON.stringify({ stock_quantity: change.previous }) }); } catch (_) { /* retain original error; surface any manual reconciliation via refresh */ }
+      }
+      await loadData({ quiet: true });
+      throw error;
+    }
+    closeModal();
+    await loadData({ quiet: true });
+    toast("تم حفظ الطلب وتحديث الفاتورة والمخزون.");
+  }
+  function printInvoice(order) {
+    const customer = order.customer || {};
+    const items = orderItems(order);
+    const popup = window.open("", "_blank", "width=800,height=900");
+    if (!popup) { toast("اسمحي بفتح النوافذ المنبثقة لطباعة الفاتورة.", "error"); return; }
+    const rows = items.map(item => `<tr><td>${esc(item.product_name_ar || item.product_name_en || item.product?.name_ar || item.product?.name_en || "منتج")}</td><td>${integer(item.quantity)}</td><td>${money(item.unit_price)}</td><td>${money(item.total_price)}</td></tr>`).join("");
+    const address = [customer.governorate, customer.address].filter(Boolean).join(" — ");
+    popup.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>فاتورة ${esc(order.order_number || "LEN")}</title><style>body{font-family:Arial,sans-serif;color:#201b19;padding:32px;max-width:900px;margin:auto}header{display:flex;justify-content:space-between;align-items:start;border-bottom:2px solid #651d31;padding-bottom:16px;margin-bottom:20px}h1{color:#651d31;margin:0}p{margin:6px 0;color:#655b56}table{width:100%;border-collapse:collapse;margin:20px 0}th,td{padding:10px;border-bottom:1px solid #e9e0d7;text-align:right}th{background:#f7f3ed}.totals{width:min(360px,100%);margin-right:auto}.totals div{display:flex;justify-content:space-between;padding:7px;border-bottom:1px solid #eee}.latin{direction:ltr;unicode-bidi:isolate}@media print{body{padding:0}}</style></head><body><header><div><h1>LEN</h1><p>فاتورة بيع</p></div><div><strong>رقم الطلب: <span class="latin">${esc(order.order_number || "—")}</span></strong><p>التاريخ: ${date(order.created_at)}</p><p>الحالة: ${esc(ORDER_LABELS[order.order_status] || order.order_status || "—")}</p></div></header><section><strong>العميل:</strong> ${esc(customer.full_name || "—")}<p class="latin">${esc(customer.phone || "")}</p><p>${esc(address || "")}</p></section><table><thead><tr><th>المنتج</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th></tr></thead><tbody>${rows || '<tr><td colspan="4">لا توجد بنود.</td></tr>'}</tbody></table><section class="totals"><div><span>الإجمالي الفرعي</span><b>${money(order.subtotal)}</b></div><div><span>الشحن بعد الخصم</span><b>${money(order.free_shipping_applied ? 0 : Math.max(0, Number(order.shipping_fee || 0) - Number(order.shipping_discount || 0)))}</b></div><div><span>الإجمالي النهائي</span><b>${money(order.total_amount ?? Number(order.subtotal || 0) + Number(order.shipping_fee || 0))}</b></div><div><span>العربون</span><b>${money(order.deposit_amount)}</b></div><div><span>المتبقي</span><b>${money(order.remaining_amount)}</b></div></section><p style="margin-top:24px">${esc(order.notes || "")}</p><script>window.onload=()=>window.print()<\/script></body></html>`);
+    popup.document.close();
+  }
   function openOrderDetails(order) {
     const customer = order.customer || {};
     const items = orderItems(order);
@@ -519,7 +616,7 @@
         <div class="detail-item"><span class="detail-label">المتبقي</span><span class="detail-value price">${money(order.remaining_amount)}</span></div>
         <div class="detail-item"><span class="detail-label">رقم إضافي للمخزون</span><span class="detail-value">${order.stock_deducted ? "تم خصم الكمية" : "لم يتم الخصم"}</span></div>
       </div>`,
-      footer: `<button class="button button-secondary" type="button" data-modal-cancel>إغلاق</button>${order.payment_status !== "deposit_received" ? `<button class="button" type="button" data-action="mark-deposit" data-id="${attr(order.id)}">تأكيد استلام العربون</button>` : ""}`
+      footer: `<button class="button button-secondary" type="button" data-modal-cancel>إغلاق</button><button class="button button-secondary" type="button" data-action="print-invoice" data-id="${attr(order.id)}">طباعة الفاتورة</button><button class="button button-secondary" type="button" data-action="edit-order" data-id="${attr(order.id)}">تعديل الطلب</button><button class="button button-danger" type="button" data-action="delete-order" data-id="${attr(order.id)}">حذف الطلب</button>${order.payment_status !== "deposit_received" ? `<button class="button" type="button" data-action="mark-deposit" data-id="${attr(order.id)}">تأكيد استلام العربون</button>` : ""}`
     });
   }
   function openCustomerHistory(customer) {
@@ -614,6 +711,8 @@
     try {
       if (form.dataset.form === "product") {
         await handleProductSubmit(form);
+      } else if (form.dataset.form === "order-edit") {
+        await saveOrderEdit(form);
       } else if (form.dataset.form === "category") {
         const data = formObject(form);
         const id = String(new FormData(form).get("id") || "");
@@ -678,6 +777,21 @@
     if (action === "edit-category") return openCategoryForm(state.categories.find(item => item.id === id));
     if (action === "edit-stock") return openStockForm(state.products.find(item => item.id === id));
     if (action === "order-details") return openOrderDetails(state.orders.find(item => item.id === id));
+    if (action === "edit-order") { const order = state.orders.find(item => String(item.id) === String(id)); if (order) openOrderEdit(order); return; }
+    if (action === "print-invoice") { const order = state.orders.find(item => String(item.id) === String(id)); if (order) printInvoice(order); return; }
+    if (action === "delete-order") {
+      const order = state.orders.find(item => String(item.id) === String(id));
+      if (!order) return;
+      closeModal();
+      return confirmAction(`حذف الطلب ${order.order_number || ""} نهائيًا؟${order.stock_deducted ? " سيتم إلغاء الطلب أولًا لإرجاع الكميات المخصومة إلى المخزون." : ""}`, async () => {
+        if (order.stock_deducted && order.order_status !== "cancelled") {
+          await api(`/orders/${encodeURIComponent(id)}/status`, { method: "PATCH", body: JSON.stringify({ order_status: "cancelled" }) });
+        }
+        await api(`/orders/${encodeURIComponent(id)}`, { method: "DELETE" });
+        await loadData({ quiet: true });
+        toast("تم حذف الطلب.");
+      });
+    }
     if (action === "customer-history") return openCustomerHistory(state.customers.find(item => item.id === id));
     if (action === "main-image") {
       const productId = $("#productForm input[name=id]")?.value;
@@ -731,6 +845,40 @@
       }
     }
   }
+  async function ensureConfirmedOrderStock(orderId) {
+    const order = state.orders.find(item => String(item.id) === String(orderId));
+    if (!order || !["confirmed", "preparing", "shipped", "delivered"].includes(order.order_status) || order.stock_deducted) return;
+    const items = orderItems(order);
+    if (!items.length) throw new Error("تم تأكيد الطلب، لكن لا توجد بنود منتجات لخصمها من المخزون.");
+    const quantities = new Map();
+    for (const item of items) {
+      const productId = item.product_id || item.product?.id;
+      const quantity = Number(item.quantity || 0);
+      if (!productId || !Number.isInteger(quantity) || quantity < 1) {
+        throw new Error("تم تأكيد الطلب، لكن بعض البنود غير مرتبطة بمنتج أو كميتها غير صالحة؛ لم يتم خصم المخزون.");
+      }
+      quantities.set(String(productId), (quantities.get(String(productId)) || 0) + quantity);
+    }
+    const applied = [];
+    try {
+      for (const [productId, quantity] of quantities) {
+        const product = state.products.find(item => String(item.id) === productId);
+        if (!product) throw new Error("تعذر العثور على منتج من منتجات الطلب في المخزون.");
+        const current = Number(product.stock_quantity || 0);
+        if (current < quantity) throw new Error(`المخزون غير كافٍ للمنتج ${productName(product)}؛ المتاح ${integer(current)} والمطلوب ${integer(quantity)}.`);
+        await api(`/inventory/${encodeURIComponent(productId)}`, { method: "PATCH", body: JSON.stringify({ stock_quantity: current - quantity }) });
+        applied.push({ productId, previous: current });
+      }
+      await api(`/orders/${encodeURIComponent(orderId)}`, { method: "PATCH", body: JSON.stringify({ stock_deducted: true }) });
+      await loadData({ quiet: true });
+    } catch (error) {
+      for (const row of applied.reverse()) {
+        try { await api(`/inventory/${encodeURIComponent(row.productId)}`, { method: "PATCH", body: JSON.stringify({ stock_quantity: row.previous }) }); } catch (_) { /* report original failure */ }
+      }
+      await loadData({ quiet: true });
+      throw error;
+    }
+  }
   async function handleChange(event) {
     const target = event.target;
     if (target.matches("[data-order-status]")) {
@@ -740,10 +888,23 @@
       if (!order || order.order_status === next) return;
       const previous = order.order_status;
       target.disabled = true;
+      let statusUpdated = false;
       try {
         await perform(`/orders/${encodeURIComponent(id)}/status`, "PATCH", { order_status: next });
-        toast("تم تحديث حالة الطلب والمخزون.");
+        statusUpdated = true;
+        if (["confirmed", "preparing", "shipped", "delivered"].includes(next)) await ensureConfirmedOrderStock(id);
+        toast("تم تأكيد الطلب وتحديث كمية المخزون.");
       } catch (error) {
+        if (statusUpdated) {
+          try {
+            await api(`/orders/${encodeURIComponent(id)}/status`, { method: "PATCH", body: JSON.stringify({ order_status: previous }) });
+            await loadData({ quiet: true });
+          } catch (_) {
+            await loadData({ quiet: true });
+            toast("تعذر خصم المخزون، ولم نتمكن من إعادة حالة الطلب تلقائيًا. راجعي الطلب والمخزون.", "error");
+            return;
+          }
+        }
         target.value = previous;
         toast(error.message || "تعذر تغيير حالة الطلب.", "error");
       } finally { target.disabled = false; }
@@ -792,15 +953,28 @@
     }
     if (event.target.closest("[data-modal-cancel]") || event.target.id === "modalClose" || event.target.id === "modalBackdrop") closeModal();
   }
+  function closeSidebar() {
+    $("#sidebar").classList.remove("open");
+    $("#sidebarScrim").classList.remove("open");
+    $("#menuToggle").setAttribute("aria-expanded", "false");
+  }
   function bind() {
     document.addEventListener("click", handleClick);
     document.addEventListener("submit", handleSubmit);
     document.addEventListener("change", handleChange);
     document.addEventListener("input", handleInput);
     $("#refreshButton").addEventListener("click", () => loadData());
-    $("#menuToggle").addEventListener("click", () => { $("#sidebar").classList.add("open"); $("#sidebarScrim").classList.add("open"); });
-    $("#sidebarScrim").addEventListener("click", () => { $("#sidebar").classList.remove("open"); $("#sidebarScrim").classList.remove("open"); });
-    document.addEventListener("keydown", event => { if (event.key === "Escape" && !$("#modalBackdrop").hidden) closeModal(); });
+    $("#menuToggle").addEventListener("click", () => {
+      const opening = !$("#sidebar").classList.contains("open");
+      $("#sidebar").classList.toggle("open", opening);
+      $("#sidebarScrim").classList.toggle("open", opening);
+      $("#menuToggle").setAttribute("aria-expanded", String(opening));
+    });
+    $("#sidebarScrim").addEventListener("click", closeSidebar);
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape" && !$("#modalBackdrop").hidden) closeModal();
+      else if (event.key === "Escape") closeSidebar();
+    });
   }
   bind();
   loadData();
