@@ -286,3 +286,36 @@ bdi, .num, .price, .metric-value, time, input[type="number"], input[type="tel"],
 [dir=ltr] .ship-toggle input:checked + .ship-toggle-track::after{transform:translateX(20px)}
 .ship-toggle input:focus-visible + .ship-toggle-track{outline:2px solid #2f8f5b;outline-offset:2px}
 .ship-toggle small{display:block;font-weight:400;opacity:.75;margin-top:2px}
+
+
+/* Responsive navigation, order editing and invoice actions */
+.app-shell, .main-area, .page-content { min-width: 0; }
+.main-area { overflow-x: clip; }
+.sidebar { overflow-y: auto; overscroll-behavior: contain; }
+.main-nav { flex: 0 0 auto; }
+.sidebar-bottom { flex: 0 0 auto; }
+.order-edit-lines { display: flex; flex-direction: column; gap: 8px; }
+.order-edit-line { display: grid; grid-template-columns: minmax(130px,1fr) minmax(76px,110px) minmax(100px,140px); align-items: center; gap: 8px; padding: 9px; border: 1px solid var(--line); border-radius: 4px; background: #fffdfa; }
+.order-edit-product { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.order-edit-product strong { color: var(--wine-dark); font-size: 10px; }
+.order-edit-product small, .order-edit-hint { color: var(--muted); font-size: 8px; line-height: 1.7; }
+.order-edit-line input { width: 100%; min-width: 0; min-height: 35px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 3px; background: var(--paper); font-family: var(--sans); font-size: 10px; }
+.order-status-select { max-width: 100%; }
+@media (max-width: 850px) {
+  .sidebar { height: 100vh; height: 100dvh; }
+  .sidebar.open { box-shadow: -15px 0 45px rgba(34,14,20,.18); }
+  .main-area { width: 100%; }
+  .page-content { max-width: none; }
+}
+@media (max-width: 600px) {
+  .order-edit-line { grid-template-columns: minmax(0,1fr) minmax(72px,90px) minmax(90px,110px); }
+  .order-edit-product strong { font-size: 9px; }
+  .modal-footer { flex-wrap: wrap; }
+  .modal-footer .button { flex: 1 1 auto; }
+  .app-footer { flex-wrap: wrap; }
+}
+@media (max-width: 380px) {
+  .metric-grid { grid-template-columns: 1fr 1fr; }
+  .order-edit-line { grid-template-columns: 1fr 1fr; }
+  .order-edit-product { grid-column: 1/-1; }
+}
